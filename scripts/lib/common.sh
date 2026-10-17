@@ -210,6 +210,13 @@ resolve_toolchain() { # exports CC CXX AR RANLIB STRIP NM OBJCOPY + SITE_SYSROOT
                 done
                 export PATH
             fi
+            # MSVC tools must also win over Git's coreutils: Git ships
+            # /usr/bin/link (GNU) which shadows MSVC link.exe inside nmake's
+            # cmd children and breaks every DLL/module link.
+            local cl_dir
+            cl_dir="$(dirname "$(command -v cl)")"
+            PATH="$cl_dir:$PATH"
+            export PATH
             ;;
         *) bst_die "unsupported site family '$SITE_FAMILY'" ;;
     esac

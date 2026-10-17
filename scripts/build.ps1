@@ -124,61 +124,71 @@ function Expand-Zip([string]$zip, [string]$dir) {
 }
 
 function Ensure-Nasm {
-    if (Get-Command nasm.exe -ErrorAction SilentlyContinue) { return }
-    $tools = Get-ToolsDir
-    New-Item -ItemType Directory -Force -Path $tools | Out-Null
-    $dir = Join-Path $tools "nasm"
+    $found = Get-Command nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     $exe = $null
-    $direct = Join-Path $dir "nasm-2.16.03\nasm.exe"
-    if (Test-Path $direct) { $exe = Get-Item $direct }
-    if (-not $exe) {
-        $zip = Join-Path $tools "nasm-2.16.03-win64.zip"
-        if (-not (Test-Path $zip)) {
-            Info "NASM not found -- provisioning a portable copy into .cache\tools (no admin needed)"
-            Download-File "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip" "$zip"
-        }
-        Expand-Zip $zip $dir
+    if ($found) {
+        $exe = Get-Item $found.Source
+    } else {
+        $tools = Get-ToolsDir
+        New-Item -ItemType Directory -Force -Path $tools | Out-Null
+        $dir = Join-Path $tools "nasm"
+        $direct = Join-Path $dir "nasm-2.16.03\nasm.exe"
         if (Test-Path $direct) { $exe = Get-Item $direct }
         if (-not $exe) {
-            $exe = Get-ChildItem -Path $dir -Recurse -Filter nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            $zip = Join-Path $tools "nasm-2.16.03-win64.zip"
+            if (-not (Test-Path $zip)) {
+                Info "NASM not found -- provisioning a portable copy into .cache\tools (no admin needed)"
+                Download-File "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip" "$zip"
+            }
+            Expand-Zip $zip $dir
+            if (Test-Path $direct) { $exe = Get-Item $direct }
+            if (-not $exe) {
+                $exe = Get-ChildItem -Path $dir -Recurse -Filter nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
         }
     }
-    if (-not $exe) { Fail "NASM provisioning failed (no nasm.exe under $dir). Install manually: winget install NASM.NASM" }
+    if (-not $exe) { Fail "NASM not found/provisioning failed. Install manually: winget install NASM.NASM" }
+    # Always publish the resolved directory: Git Bash's login profile rebuilds
+    # PATH and would otherwise pick a different (broken) tool.
     $env:PATH = "$($exe.DirectoryName);$env:PATH"
     $env:BST_TOOLS_DIRS = "$($exe.DirectoryName);$($env:BST_TOOLS_DIRS)"
     Info "using NASM: $($exe.FullName)"
 }
 
 function Ensure-Perl {
-    if (Get-Command perl.exe -ErrorAction SilentlyContinue) { return }
-    $tools = Get-ToolsDir
-    New-Item -ItemType Directory -Force -Path $tools | Out-Null
-    $dir = Join-Path $tools "strawberry"
-    # The portable distribution extracts to perl\bin\perl.exe; probe the
-    # deterministic path first (recursive scans of the ~600MB tree are slow).
+    $found = Get-Command perl.exe -ErrorAction SilentlyContinue | Select-Object -First 1
     $exe = $null
-    $direct = Join-Path $dir "perl\bin\perl.exe"
-    if (Test-Path $direct) { $exe = Get-Item $direct }
-    if (-not $exe) {
-        $zip = Join-Path $tools "strawberry-perl-5.42.3.1-64bit-portable.zip"
-        if (-not (Test-Path $zip)) {
-            Info "Perl not found -- provisioning Strawberry Perl (portable) into .cache\tools (no admin needed)"
-            Download-File "https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54231_64bit/strawberry-perl-5.42.3.1-64bit-portable.zip" "$zip"
-        }
-        Info "extracting Strawberry Perl (one-time, ~600MB extracted)..."
-        # A complete tree carries this core module; a truncated/partial
-        # extraction (interrupted Expand-Archive runs) does not.  Retry once.
-        $marker = Join-Path $dir "perl\lib\warnings\register.pm"
-        for ($attempt = 1; $attempt -le 2; $attempt++) {
-            if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            Expand-Zip $zip $dir
-            if (Test-Path $marker) { break }
-            Info "Perl extraction looks incomplete -- retrying"
-        }
+    if ($found) {
+        $exe = Get-Item $found.Source
+    } else {
+        $tools = Get-ToolsDir
+        New-Item -ItemType Directory -Force -Path $tools | Out-Null
+        $dir = Join-Path $tools "strawberry"
+        # The portable distribution extracts to perl\bin\perl.exe; probe the
+        # deterministic path first (recursive scans of the ~600MB tree are slow).
+        $direct = Join-Path $dir "perl\bin\perl.exe"
         if (Test-Path $direct) { $exe = Get-Item $direct }
+        if (-not $exe) {
+            $zip = Join-Path $tools "strawberry-perl-5.42.3.1-64bit-portable.zip"
+            if (-not (Test-Path $zip)) {
+                Info "Perl not found -- provisioning Strawberry Perl (portable) into .cache\tools (no admin needed)"
+                Download-File "https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54231_64bit/strawberry-perl-5.42.3.1-64bit-portable.zip" "$zip"
+            }
+            Info "extracting Strawberry Perl (one-time, ~600MB extracted)..."
+            # A complete tree carries this core module; a truncated/partial
+            # extraction (interrupted runs) does not.  Retry once.
+            $marker = Join-Path $dir "perl\lib\warnings\register.pm"
+            for ($attempt = 1; $attempt -le 2; $attempt++) {
+                if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+                Expand-Zip $zip $dir
+                if (Test-Path $marker) { break }
+                Info "Perl extraction looks incomplete -- retrying"
+            }
+            if (Test-Path $direct) { $exe = Get-Item $direct }
+        }
     }
-    if (-not $exe) { Fail "Strawberry Perl provisioning failed (no perl.exe under $dir). Install manually: winget install StrawberryPerl.StrawberryPerl" }
+    if (-not $exe) { Fail "Strawberry Perl not found/provisioning failed. Install manually: winget install StrawberryPerl.StrawberryPerl" }
     $env:PATH = "$($exe.DirectoryName);$env:PATH"
     $env:BST_TOOLS_DIRS = "$($exe.DirectoryName);$($env:BST_TOOLS_DIRS)"
     Info "using Perl: $($exe.FullName)"

@@ -140,14 +140,25 @@ recipe_smoke() {
                 "/I$(bst_win_path "$BST_DIST")\\include\\msvc_compat" \
                 "$(bst_win_path "$src")" /Fe:"smoke.exe" /link \
                 "/LIBPATH:$(bst_win_path "$BST_DIST")\\lib" jemalloc.lib ) || bst_die "jemalloc smoke build failed"
+            # a shared-variant smoke needs the DLL discoverable at run time
+            if [ -d "$BST_DIST/bin" ]; then
+                PATH="$(cygpath -u "$(bst_win_path "$BST_DIST")")/bin:$PATH"
+                export PATH
+            fi
             ./smoke.exe || bst_die "jemalloc smoke run failed"
             ;;
         *)
             local link_libs="-lpthread -ldl"
             [ "$SITE_FAMILY" = android ] && link_libs=""   # bionic: pthread/dl in libc
+            local link
+            if [ -f "$BST_DIST/lib/libjemalloc.a" ]; then
+                link="$BST_DIST/lib/libjemalloc.a"
+            else
+                link="-L$BST_DIST/lib -Wl,-rpath,$BST_DIST/lib -ljemalloc"
+            fi
             # shellcheck disable=SC2086
             "$CC" -I"$BST_DIST/include" -I"$BST_DIST/include/msvc_compat" "$src" \
-                "$BST_DIST/lib/libjemalloc.a" $link_libs -o "$exe" \
+                $link $link_libs -o "$exe" \
                 || bst_die "jemalloc smoke link failed"
             if [ "$SITE_FAMILY" = android ]; then
                 bst_info "android: smoke compiled+linked OK (no device runner attached; run step skipped)"
