@@ -148,8 +148,9 @@ recipe_smoke() {
             ./smoke.exe || bst_die "jemalloc smoke run failed"
             ;;
         *)
-            local link_libs="-lpthread -ldl"
+            local link_libs="-lpthread -ldl" arch_flags=""
             [ "$SITE_FAMILY" = android ] && link_libs=""   # bionic: pthread/dl in libc
+            [ "$SITE_FAMILY" = macos ] && arch_flags="-arch $SITE_DARWIN_ARCH"
             local link
             if [ -f "$BST_DIST/lib/libjemalloc.a" ]; then
                 link="$BST_DIST/lib/libjemalloc.a"
@@ -157,7 +158,7 @@ recipe_smoke() {
                 link="-L$BST_DIST/lib -Wl,-rpath,$BST_DIST/lib -ljemalloc"
             fi
             # shellcheck disable=SC2086
-            "$CC" -I"$BST_DIST/include" -I"$BST_DIST/include/msvc_compat" "$src" \
+            "$CC" $arch_flags -I"$BST_DIST/include" -I"$BST_DIST/include/msvc_compat" "$src" \
                 $link $link_libs -o "$exe" \
                 || bst_die "jemalloc smoke link failed"
             if [ "$SITE_FAMILY" = android ]; then

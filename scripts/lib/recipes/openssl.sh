@@ -128,7 +128,8 @@ recipe_smoke() {
             ./smoke.exe || bst_die "openssl smoke run failed"
             ;;
         *)
-            local link
+            local link arch_flags=""
+            [ "$SITE_FAMILY" = macos ] && arch_flags="-arch $SITE_DARWIN_ARCH"
             if [ "$SITE_FAMILY" = android ]; then
                 # bionic: pthread/dl live inside libc; no -lpthread/-ldl stubs
                 if [ -f "$BST_DIST/lib/libssl.a" ]; then
@@ -142,7 +143,7 @@ recipe_smoke() {
                 link="-L$BST_DIST/lib -Wl,-rpath,$BST_DIST/lib -lssl -lcrypto -ldl -lpthread"
             fi
             # shellcheck disable=SC2086
-            "$CC" -I"$BST_DIST/include" "$src" $link -o "$exe" \
+            "$CC" $arch_flags -I"$BST_DIST/include" "$src" $link -o "$exe" \
                 || bst_die "openssl smoke link failed"
             if [ "$SITE_FAMILY" = android ]; then
                 bst_info "android: smoke compiled+linked OK (no device runner attached; run step skipped)"
