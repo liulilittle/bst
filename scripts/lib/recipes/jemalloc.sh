@@ -145,7 +145,7 @@ recipe_smoke() {
                 PATH="$(cygpath -u "$(bst_win_path "$BST_DIST")")/bin:$PATH"
                 export PATH
             fi
-            ./smoke.exe || bst_die "jemalloc smoke run failed"
+            ( cd "$BST_BUILD_DIR" && ./smoke.exe ) || bst_die "jemalloc smoke run failed"
             ;;
         *)
             local link_libs="-lpthread -ldl" arch_flags=""
