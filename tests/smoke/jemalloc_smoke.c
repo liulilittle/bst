@@ -4,7 +4,14 @@
  * Symbol names differ per platform because bst follows jemalloc's own
  * defaults: the empty prefix on Linux/Android exports the standard names,
  * while Darwin and MSVC builds use the je_ prefix (the upstream default
- * there).  The shim macros below pick the right set. */
+ * there).  The shim macros below pick the right set.
+ *
+ * On MSVC the static library is linked directly, so JEMALLOC_EXPORT must be
+ * neutralized first (otherwise the declarations carry __declspec(dllimport)
+ * and the link looks for __imp_ symbols). */
+#if defined(_MSC_VER)
+#  define JEMALLOC_EXPORT
+#endif
 #include <stdio.h>
 #include <string.h>
 

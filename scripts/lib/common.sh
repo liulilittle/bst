@@ -288,11 +288,11 @@ bst_fetch() { # <lib> <version>: download+verify+extract+patch; sets BST_SRC
     BST_TARBALL="$BST_CACHE/src/$fname"
     if [ ! -f "$BST_TARBALL" ]; then
         bst_info "fetching $url"
-        if ! curl -fsSL --retry 3 -o "$BST_TARBALL.tmp" "$url"; then
-            rm -f "$BST_TARBALL.tmp"
+        if ! curl -fL -C - --retry 5 --retry-all-errors --retry-delay 2 \
+                --speed-limit 1024 --speed-time 60 -o "$BST_TARBALL" "$url"; then
+            rm -f "$BST_TARBALL"
             bst_die "download failed: $url"
         fi
-        mv "$BST_TARBALL.tmp" "$BST_TARBALL"
     fi
     local got; got="$(bst_sha256_of "$BST_TARBALL")"
     [ "$got" = "$sha" ] || bst_die "sha256 mismatch for $fname

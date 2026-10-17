@@ -137,6 +137,7 @@ function Ensure-Nasm {
         $tools = Get-ToolsDir
         New-Item -ItemType Directory -Force -Path $tools | Out-Null
         $dir = Join-Path $tools "nasm"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
         $direct = Join-Path $dir "nasm-2.16.03\nasm.exe"
         if (Test-Path $direct) { $exe = Get-Item $direct }
         if (-not $exe) {

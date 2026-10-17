@@ -101,8 +101,12 @@ jemalloc_install_windows() {
     local plat cfg out
     plat="$(jemalloc_msvc_platform)"
     cfg="$(jemalloc_msvc_config)"
-    out="$BST_SRC/msvc/projects/vc2022/$plat/$cfg"
-    [ -d "$out" ] || bst_die "expected MSVC output dir missing: $out"
+    # SolutionDir is the directory of the .sln (msvc/), so outputs land in
+    # msvc/<Platform>/<Configuration>/; keep the projects/ path as fallback
+    # in case an upstream refresh changes OutDir.
+    out="$BST_SRC/msvc/$plat/$cfg"
+    [ -d "$out" ] || out="$BST_SRC/msvc/projects/vc2022/$plat/$cfg"
+    [ -d "$out" ] || bst_die "expected MSVC output dir missing: $BST_SRC/msvc/$plat/$cfg"
     mkdir -p "$BST_DIST/lib" "$BST_DIST/bin" "$BST_DIST/include"
     cp -f "$out"/*.lib "$BST_DIST/lib/" 2>/dev/null || true
     cp -f "$out"/*.dll "$BST_DIST/bin/" 2>/dev/null || true
