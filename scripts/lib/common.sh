@@ -199,6 +199,17 @@ resolve_toolchain() { # exports CC CXX AR RANLIB STRIP NM OBJCOPY + SITE_SYSROOT
             command -v cl >/dev/null 2>&1 || bst_die "MSVC environment not loaded -- run this site through scripts/build.ps1 (it locates Visual Studio and loads the developer environment)"
             cc=cl; cxx=cl
             AR=lib RANLIB=: STRIP=: NM=: OBJCOPY=:
+            # build.ps1 provisions NASM/Perl into .cache/tools and reports
+            # their directories via BST_TOOLS_DIRS.  Git Bash's login profile
+            # rebuilds PATH, so re-prepend them here -- the tools (including
+            # OpenSSL's internal nasm lookup) then resolve deterministically.
+            if [ -n "${BST_TOOLS_DIRS:-}" ] && command -v cygpath >/dev/null 2>&1; then
+                local d
+                for d in $(printf '%s\n' "$BST_TOOLS_DIRS" | tr ';' '\n'); do
+                    [ -n "$d" ] && PATH="$(cygpath -u "$d"):$PATH"
+                done
+                export PATH
+            fi
             ;;
         *) bst_die "unsupported site family '$SITE_FAMILY'" ;;
     esac

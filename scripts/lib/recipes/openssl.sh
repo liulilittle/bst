@@ -4,6 +4,7 @@
 # install_sw for libs+apps+headers, upstream test suite where runnable.
 
 BST_PERL="${BST_PERL:-perl}"
+BST_NASM="${BST_NASM:-nasm}"
 
 openssl_target() {
     case "$SITE" in
@@ -47,7 +48,7 @@ recipe_configure() {
         windows)
             case "$SITE" in
                 windows-msvc-x64|windows-msvc-x86)
-                    bst_require_cmd nasm "install NASM: choco install nasm (reopen the shell afterwards)" ;;
+                    bst_require_cmd "$BST_NASM" "install NASM: choco install nasm (reopen the shell afterwards)" ;;
             esac
             ;;
         android)

@@ -134,6 +134,7 @@ function Ensure-Nasm {
     }
     if (-not $exe) { Fail "NASM provisioning failed (no nasm.exe under $dir). Install manually: winget install NASM.NASM" }
     $env:PATH = "$($exe.DirectoryName);$env:PATH"
+    $env:BST_TOOLS_DIRS = "$($exe.DirectoryName);$($env:BST_TOOLS_DIRS)"
     Info "using NASM: $($exe.FullName)"
 }
 
@@ -159,6 +160,7 @@ function Ensure-Perl {
     }
     if (-not $exe) { Fail "Strawberry Perl provisioning failed (no perl.exe under $dir). Install manually: winget install StrawberryPerl.StrawberryPerl" }
     $env:PATH = "$($exe.DirectoryName);$env:PATH"
+    $env:BST_TOOLS_DIRS = "$($exe.DirectoryName);$($env:BST_TOOLS_DIRS)"
     Info "using Perl: $($exe.FullName)"
 }
 
