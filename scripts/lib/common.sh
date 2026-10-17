@@ -344,6 +344,13 @@ bst_win_path() { # native (Windows) path for MSVC tools; identity elsewhere
     fi
 }
 
+# Run an MSVC tool without Git Bash's POSIX->Windows argument conversion
+# (otherwise /NOLOGO, /Fe:..., /p:... are rewritten into paths).  The
+# variables are inert outside MSYS-based shells.
+bst_msvc_run() {
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$@"
+}
+
 # ---------------------------------------------------------------------------
 # staging
 # ---------------------------------------------------------------------------

@@ -112,6 +112,17 @@ function Download-File([string]$url, [string]$dest) {
 
 function Get-ToolsDir { Join-Path (Join-Path $Root ".cache") "tools" }
 
+function Expand-Zip([string]$zip, [string]$dir) {
+    # tar.exe (bsdtar, ships with Windows 10+) extracts the big portable
+    # archives in seconds; Expand-Archive is the fallback.
+    $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+    if (Test-Path $tar) {
+        & $tar -xf $zip -C $dir
+        if ($LASTEXITCODE -eq 0) { return }
+    }
+    Expand-Archive -Path $zip -DestinationPath $dir -Force
+}
+
 function Ensure-Nasm {
     if (Get-Command nasm.exe -ErrorAction SilentlyContinue) { return }
     $tools = Get-ToolsDir
@@ -126,7 +137,7 @@ function Ensure-Nasm {
             Info "NASM not found -- provisioning a portable copy into .cache\tools (no admin needed)"
             Download-File "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip" "$zip"
         }
-        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        Expand-Zip $zip $dir
         if (Test-Path $direct) { $exe = Get-Item $direct }
         if (-not $exe) {
             $exe = Get-ChildItem -Path $dir -Recurse -Filter nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -155,7 +166,16 @@ function Ensure-Perl {
             Download-File "https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54231_64bit/strawberry-perl-5.42.3.1-64bit-portable.zip" "$zip"
         }
         Info "extracting Strawberry Perl (one-time, ~600MB extracted)..."
-        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        # A complete tree carries this core module; a truncated/partial
+        # extraction (interrupted Expand-Archive runs) does not.  Retry once.
+        $marker = Join-Path $dir "perl\lib\warnings\register.pm"
+        for ($attempt = 1; $attempt -le 2; $attempt++) {
+            if (Test-Path $dir) { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Expand-Zip $zip $dir
+            if (Test-Path $marker) { break }
+            Info "Perl extraction looks incomplete -- retrying"
+        }
         if (Test-Path $direct) { $exe = Get-Item $direct }
     }
     if (-not $exe) { Fail "Strawberry Perl provisioning failed (no perl.exe under $dir). Install manually: winget install StrawberryPerl.StrawberryPerl" }

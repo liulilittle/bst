@@ -78,7 +78,7 @@ recipe_build() {
             cfg="$(jemalloc_msvc_config)"
             plat="$(jemalloc_msvc_platform)"
             bst_require_cmd msbuild "run through scripts/build.ps1 (loads the Visual Studio environment)"
-            ( cd "$BST_SRC/msvc" && msbuild jemalloc_vc2022.sln /nologo /m:"$BST_JOBS" \
+            ( cd "$BST_SRC/msvc" && bst_msvc_run msbuild jemalloc_vc2022.sln /nologo /m:"$BST_JOBS" \
                 /p:Configuration="$cfg" /p:Platform="$plat" ) || bst_die "jemalloc msbuild failed"
             ;;
         *)
@@ -136,7 +136,7 @@ recipe_smoke() {
     [ -f "$src" ] || bst_die "missing smoke source: $src"
     case "$SITE_FAMILY" in
         windows)
-            ( cd "$BST_BUILD_DIR" && cl /nologo "/I$(bst_win_path "$BST_DIST")\\include" \
+            ( cd "$BST_BUILD_DIR" && bst_msvc_run cl /nologo "/I$(bst_win_path "$BST_DIST")\\include" \
                 "/I$(bst_win_path "$BST_DIST")\\include\\msvc_compat" \
                 "$(bst_win_path "$src")" /Fe:"smoke.exe" /link \
                 "/LIBPATH:$(bst_win_path "$BST_DIST")\\lib" jemalloc.lib ) || bst_die "jemalloc smoke build failed"

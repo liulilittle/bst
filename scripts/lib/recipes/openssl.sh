@@ -84,14 +84,14 @@ recipe_configure() {
 
 recipe_build() {
     case "$SITE_FAMILY" in
-        windows) ( cd "$BST_BUILD_DIR" && nmake /NOLOGO ) || bst_die "openssl nmake failed" ;;
+        windows) ( cd "$BST_BUILD_DIR" && bst_msvc_run nmake /NOLOGO ) || bst_die "openssl nmake failed" ;;
         *)       ( cd "$BST_BUILD_DIR" && make -j"$BST_JOBS" ) || bst_die "openssl make failed" ;;
     esac
 }
 
 recipe_install() {
     case "$SITE_FAMILY" in
-        windows) ( cd "$BST_BUILD_DIR" && nmake /NOLOGO install_sw ) || bst_die "openssl install_sw failed" ;;
+        windows) ( cd "$BST_BUILD_DIR" && bst_msvc_run nmake /NOLOGO install_sw ) || bst_die "openssl install_sw failed" ;;
         *)       ( cd "$BST_BUILD_DIR" && make install_sw ) || bst_die "openssl install_sw failed" ;;
     esac
 }
@@ -99,7 +99,7 @@ recipe_install() {
 recipe_test() {
     case "$SITE_FAMILY" in
         windows)
-            ( cd "$BST_BUILD_DIR" && nmake /NOLOGO test ) || bst_die "openssl tests failed"
+            ( cd "$BST_BUILD_DIR" && bst_msvc_run nmake /NOLOGO test ) || bst_die "openssl tests failed"
             ;;
         *)
             if [ -n "${BST_EMU:-}" ]; then
@@ -117,7 +117,7 @@ recipe_smoke() {
     [ -f "$src" ] || bst_die "missing smoke source: $src"
     case "$SITE_FAMILY" in
         windows)
-            ( cd "$BST_BUILD_DIR" && cl /nologo \
+            ( cd "$BST_BUILD_DIR" && bst_msvc_run cl /nologo \
                 "/I$(bst_win_path "$BST_DIST")\\include" \
                 "$(bst_win_path "$src")" /Fe:"smoke.exe" /link \
                 "/LIBPATH:$(bst_win_path "$BST_DIST")\\lib" \
