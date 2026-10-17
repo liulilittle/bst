@@ -125,6 +125,10 @@ recipe_smoke() {
                 "/LIBPATH:$(bst_win_path "$BST_DIST")\\lib" \
                 libssl.lib libcrypto.lib ws2_32.lib crypt32.lib advapi32.lib user32.lib gdi32.lib ) \
                 || bst_die "openssl smoke build failed"
+            if [ "$SITE" = windows-msvc-arm64 ]; then
+                bst_info "arm64: smoke compiled+linked OK (an x64 host cannot execute ARM64 binaries); run step skipped"
+                return 0
+            fi
             ( cd "$BST_BUILD_DIR" && ./smoke.exe ) || bst_die "openssl smoke run failed"
             ;;
         *)

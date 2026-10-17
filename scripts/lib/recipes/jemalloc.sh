@@ -64,9 +64,11 @@ jemalloc_msvc_config() { # -> Release-static | Release
 }
 
 jemalloc_msvc_platform() {
+    # solution-level platform spellings (32-bit is "x86" in the sln even
+    # though the project files call it "Win32")
     case "$SITE" in
         windows-msvc-x64) echo "x64" ;;
-        windows-msvc-x86) echo "Win32" ;;
+        windows-msvc-x86) echo "x86" ;;
         *) bst_die "no MSVC project platform for '$SITE' (jemalloc ships x64/x86 only)" ;;
     esac
 }
@@ -98,15 +100,20 @@ recipe_install() {
 }
 
 jemalloc_install_windows() {
-    local plat cfg out
+    local plat cfg out cand
     plat="$(jemalloc_msvc_platform)"
     cfg="$(jemalloc_msvc_config)"
     # SolutionDir is the directory of the .sln (msvc/), so outputs land in
-    # msvc/<Platform>/<Configuration>/; keep the projects/ path as fallback
-    # in case an upstream refresh changes OutDir.
-    out="$BST_SRC/msvc/$plat/$cfg"
-    [ -d "$out" ] || out="$BST_SRC/msvc/projects/vc2022/$plat/$cfg"
-    [ -d "$out" ] || bst_die "expected MSVC output dir missing: $BST_SRC/msvc/$plat/$cfg"
+    # msvc/<Platform>/<Configuration>/; the 32-bit project platform is
+    # "Win32"; keep the projects/ path as a last-resort fallback.
+    out=""
+    for cand in "$BST_SRC/msvc/$plat/$cfg" \
+                "$BST_SRC/msvc/Win32/$cfg" \
+                "$BST_SRC/msvc/projects/vc2022/$plat/$cfg" \
+                "$BST_SRC/msvc/projects/vc2022/Win32/$cfg"; do
+        [ -d "$cand" ] && { out="$cand"; break; }
+    done
+    [ -n "$out" ] || bst_die "expected MSVC output dir missing (looked for $cfg under $BST_SRC/msvc)"
     mkdir -p "$BST_DIST/lib" "$BST_DIST/bin" "$BST_DIST/include"
     cp -f "$out"/*.lib "$BST_DIST/lib/" 2>/dev/null || true
     cp -f "$out"/*.dll "$BST_DIST/bin/" 2>/dev/null || true
