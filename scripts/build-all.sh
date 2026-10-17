@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build every (bst_lib, site) that this host can build, one at a time, through the
+# Build every (lib, site) that this host can build, one at a time, through the
 # same scripts/ci/build-test.sh driver CI uses.
 #
-# usage: scripts/build-all.sh [--bst_lib <bst_lib>] [--sites "<s1> <s2> ..."] [--keep-going] [build.sh options...]
+# usage: scripts/build-all.sh [--lib <lib>] [--sites "<s1> <s2> ..."] [--keep-going] [build.sh options...]
 #
-#   --bst_lib <bst_lib>       restrict to one library
+#   --lib <lib>       restrict to one library
 #   --sites "<list>"  restrict to these site keys (default: every site this
 #                     host family can build)
 #   --keep-going      continue after a failure (default: stop at the first)
@@ -15,7 +15,7 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export BST_ROOT="$ROOT"
-. "$ROOT/scripts/bst_lib/common.sh"
+. "$ROOT/scripts/lib/common.sh"
 
 LIBS="openssl jemalloc liburing"
 ONLY_SITES=""
@@ -24,7 +24,7 @@ PASSTHROUGH=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --bst_lib)        LIBS="${2:-}"; shift 2 ;;
+        --lib)        LIBS="${2:-}"; shift 2 ;;
         --sites)      ONLY_SITES="${2:-}"; shift 2 ;;
         --keep-going) KEEP_GOING=1; shift ;;
         *)            PASSTHROUGH+=("$1"); shift ;;

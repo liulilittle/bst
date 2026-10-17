@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Framework self-tests: everything that can be checked without compiling a
-# library.  Run it after touching scripts/bst_lib/common.sh or the site table.
+# library.  Run it after touching scripts/lib/common.sh or the site table.
 #
 # usage: bash scripts/tests/unit.sh
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export BST_ROOT="$ROOT"
-. "$ROOT/scripts/bst_lib/common.sh"
+. "$ROOT/scripts/lib/common.sh"
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); echo "ok   - $1"; }
