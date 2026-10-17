@@ -60,7 +60,10 @@ recipe_configure() {
             ;;
         linux*)
             if site_is_cross; then
-                cfg+=(--cross-compile-prefix="$SITE_CROSS")
+                # Some linux-* targets already bake in a cross CC; passing
+                # --cross-compile-prefix on top of those double-prefixes the
+                # compiler name.  Setting CC/CXX explicitly is unambiguous.
+                cfg+=("CC=$CC" "CXX=$CXX")
             fi
             case "$SITE" in
                 linux-armv7) cfg+=(-march=armv7-a -mfloat-abi=hard) ;;

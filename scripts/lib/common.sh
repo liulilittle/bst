@@ -207,6 +207,13 @@ resolve_toolchain() { # exports CC CXX AR RANLIB STRIP NM OBJCOPY + SITE_SYSROOT
     SITE_SYSROOT=""
     if site_is_cross && [ "$SITE_FAMILY" != android ]; then
         SITE_SYSROOT="$("$CC" -print-sysroot 2>/dev/null || true)"
+        case "$SITE_SYSROOT" in
+            ""|"/")
+                # Debian-style cross toolchains report "/" (or nothing); the
+                # real sysroot is the per-arch tree installed by the packages.
+                SITE_SYSROOT="/usr/${SITE_CROSS%-}"
+                ;;
+        esac
     fi
 }
 

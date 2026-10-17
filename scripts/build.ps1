@@ -101,11 +101,12 @@ function Import-VsEnv([string]$arch) {
 }
 
 function Download-File([string]$url, [string]$dest) {
-    # curl.exe ships with Windows 10+; it streams to disk and honors redirects.
+    # curl.exe ships with Windows 10+; it streams to disk, honors redirects,
+    # resumes partial files and survives transient network stalls.
     $curl = Join-Path $env:SystemRoot "System32\curl.exe"
     if (-not (Test-Path $curl)) { $curl = "curl.exe" }
     Info "downloading $url"
-    & $curl -fL --retry 3 --retry-delay 2 -o "$dest" $url
+    & $curl -fL -C - --retry 5 --retry-all-errors --retry-delay 2 --speed-limit 1024 --speed-time 60 -o "$dest" $url
     if ($LASTEXITCODE -ne 0) { Fail "download failed (curl rc=$LASTEXITCODE): $url" }
 }
 

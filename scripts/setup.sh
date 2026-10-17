@@ -72,7 +72,7 @@ setup_cross() {
             linux-riscv64) pkgs+=(gcc-riscv64-linux-gnu) ;;
             linux-ppc64le) pkgs+=(gcc-powerpc64le-linux-gnu) ;;
             linux-s390x)   pkgs+=(gcc-s390x-linux-gnu) ;;
-            linux-i686)    pkgs+=(gcc-i686-linux-gnu) ;;
+            linux-i686)    pkgs+=(gcc-i686-linux-gnu libc6-dev-i386-cross linux-libc-dev-i386-cross) ;;
         esac
     done
     apt_install "${pkgs[@]}"
