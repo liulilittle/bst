@@ -86,18 +86,23 @@ function Import-VsEnv([string]$arch) {
     }
     $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vsPath) { Fail "Visual Studio with C++ tools not found (vswhere returned nothing)." }
-    $devCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
-    if (-not (Test-Path $devCmd)) { Fail "VsDevCmd.bat not found under $vsPath" }
-    Info "loading MSVC environment: VsDevCmd.bat -arch=$arch"
-    $envDump = cmd /c "call `"$devCmd`" -no_logo -arch=$arch >nul 2>&1 && set"
+    # vcvarsall uses the canonical x64/x86/x64_arm64 arch spellings and is the
+    # entry Microsoft documents for command-line use.
+    $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvarsall.bat"
+    if (-not (Test-Path $vcvars)) { Fail "vcvarsall.bat not found under $vsPath" }
+    Info "loading MSVC environment: vcvarsall.bat $arch ($vsPath)"
+    $envDump = cmd /c "call `"$vcvars`" $arch >nul 2>&1 && set"
     foreach ($line in $envDump) {
         if ($line -match '^([^=]+)=(.*)$') {
             Set-Item -Path ("env:" + $matches[1]) -Value $matches[2] -ErrorAction SilentlyContinue
         }
     }
     if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
-        Fail "cl.exe still not in PATH after loading the VS environment"
+        Fail "cl.exe still not in PATH after loading the VS environment (arch=$arch). For ARM64 targets install the MSVC ARM64 build tools component."
     }
+    # publish MSBuild to the bash side: Git Bash's rebuilt PATH may not expose it
+    $mb = Join-Path $vsPath "MSBuild\Current\Bin\MSBuild.exe"
+    if (Test-Path $mb) { $env:BST_MSBUILD = $mb }
 }
 
 function Download-File([string]$url, [string]$dest) {
@@ -196,10 +201,10 @@ function Ensure-Perl {
 
 function Invoke-BuildOnWindows([string]$site) {
     $arch = switch -Wildcard ($site) {
-        "windows-msvc-x64"   { "amd64"; break }
+        "windows-msvc-x64"   { "x64"; break }
         "windows-msvc-x86"   { "x86"; break }
-        "windows-msvc-arm64" { "amd64_arm64"; break }
-        default              { "amd64" }
+        "windows-msvc-arm64" { "x64_arm64"; break }
+        default              { "x64" }
     }
     Import-VsEnv $arch
 

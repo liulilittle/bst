@@ -74,11 +74,14 @@ jemalloc_msvc_platform() {
 recipe_build() {
     case "$SITE_FAMILY" in
         windows)
-            local cfg plat
+            local cfg plat mb mb_exe
             cfg="$(jemalloc_msvc_config)"
             plat="$(jemalloc_msvc_platform)"
-            bst_require_cmd msbuild "run through scripts/build.ps1 (loads the Visual Studio environment)"
-            ( cd "$BST_SRC/msvc" && bst_msvc_run msbuild jemalloc_vc2022.sln /nologo /m:"$BST_JOBS" \
+            mb="${BST_MSBUILD:-msbuild}"
+            mb_exe="$(command -v cygpath >/dev/null 2>&1 && cygpath -u "$mb" 2>/dev/null || echo "$mb")"
+            [ -x "$mb_exe" ] || command -v "$mb" >/dev/null 2>&1 || \
+                bst_die "missing MSBuild -- run through scripts/build.ps1 (loads the Visual Studio environment)"
+            ( cd "$BST_SRC/msvc" && bst_msvc_run "$mb_exe" jemalloc_vc2022.sln /nologo /m:"$BST_JOBS" \
                 /p:Configuration="$cfg" /p:Platform="$plat" ) || bst_die "jemalloc msbuild failed"
             ;;
         *)
