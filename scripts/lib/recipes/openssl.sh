@@ -66,7 +66,9 @@ recipe_configure() {
                 cfg+=("CC=$CC" "CXX=$CXX")
             fi
             case "$SITE" in
-                linux-armv7) cfg+=(-march=armv7-a -mfloat-abi=hard) ;;
+                # armv7 hard-float: the linux-armv4 target implies no FPU, so
+                # pin the arch + FPU + float ABI explicitly.
+                linux-armv7) cfg+=(-march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard) ;;
             esac
             ;;
         macos)
