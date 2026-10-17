@@ -34,6 +34,7 @@ is_skippable_token() {
         linux-native|linux-cross) return 0 ;;
         *.result|*.outputs) return 0 ;;
         linux-gnu|linux-gnueabi*|linux-android*) return 0 ;;
+        linux-libc-dev-*) return 0 ;;
     esac
     return 1
 }

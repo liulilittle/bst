@@ -23,10 +23,13 @@ fi
 
 mkdir -p "$DEST" "$BST_CACHE/src"
 ZIP="$BST_CACHE/src/android-ndk-r${BST_NDK_VERSION}-linux.zip"
-if [ ! -f "$ZIP" ]; then
+if [ ! -f "$ZIP" ] || ! unzip -l "$ZIP" >/dev/null 2>&1; then
     bst_info "downloading $NDK_URL"
-    curl -fL --retry 3 -o "$ZIP.tmp" "$NDK_URL" || bst_die "NDK download failed"
-    mv "$ZIP.tmp" "$ZIP"
+    rm -f "$ZIP"
+    # resume + retry all transient failures (HTTP/2 stream resets included)
+    curl -fL -C - --retry 5 --retry-all-errors --retry-delay 2 \
+         --speed-limit 1024 --speed-time 60 -o "$ZIP" "$NDK_URL" \
+        || bst_die "NDK download failed: $NDK_URL"
 fi
 if [ -n "$NDK_SHA256" ]; then
     got="$(bst_sha256_of "$ZIP")"

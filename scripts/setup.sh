@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Host preparation for bst (Linux / WSL / macOS).  One command that installs
 # everything the build scripts need, so "get the repo and build" really works:
 #
@@ -67,11 +67,11 @@ setup_cross() {
     local site pkgs=()
     for site in $(bst_sites | grep -E '^linux-(aarch64|armv7|riscv64|ppc64le|s390x|i686)$'); do
         case "$site" in
-            linux-aarch64) pkgs+=(gcc-aarch64-linux-gnu) ;;
-            linux-armv7)   pkgs+=(gcc-arm-linux-gnueabihf) ;;
-            linux-riscv64) pkgs+=(gcc-riscv64-linux-gnu) ;;
-            linux-ppc64le) pkgs+=(gcc-powerpc64le-linux-gnu) ;;
-            linux-s390x)   pkgs+=(gcc-s390x-linux-gnu) ;;
+            linux-aarch64) pkgs+=(gcc-aarch64-linux-gnu libc6-dev-arm64-cross linux-libc-dev-arm64-cross) ;;
+            linux-armv7)   pkgs+=(gcc-arm-linux-gnueabihf libc6-dev-armhf-cross linux-libc-dev-armhf-cross) ;;
+            linux-riscv64) pkgs+=(gcc-riscv64-linux-gnu libc6-dev-riscv64-cross linux-libc-dev-riscv64-cross) ;;
+            linux-ppc64le) pkgs+=(gcc-powerpc64le-linux-gnu libc6-dev-ppc64el-cross linux-libc-dev-ppc64el-cross) ;;
+            linux-s390x)   pkgs+=(gcc-s390x-linux-gnu libc6-dev-s390x-cross linux-libc-dev-s390x-cross) ;;
             linux-i686)    pkgs+=(gcc-i686-linux-gnu libc6-dev-i386-cross linux-libc-dev-i386-cross) ;;
         esac
     done

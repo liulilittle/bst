@@ -73,7 +73,9 @@ recipe_configure() {
             esac
             ;;
         macos)
-            cfg+=(-arch "$SITE_DARWIN_ARCH")
+            # The darwin64-<arch>-cc targets already carry the right -arch;
+            # passing -arch here makes Configure treat the flag's value as a
+            # second target.
             ;;
     esac
 
