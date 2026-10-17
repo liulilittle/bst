@@ -1,0 +1,11 @@
+# bst build outputs (never commit)
+.build/
+.cache/
+dist/
+dist-out/
+ci-logs/
+*.log
+
+# opencode local state (never commit)
+.opencode/
+.superpowers/

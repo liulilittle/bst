@@ -1,0 +1,8 @@
+# Keep shell scripts LF in the working tree on every platform.
+*.sh text eol=lf
+*.ps1 text eol=crlf
+*.c text eol=lf
+*.h text eol=lf
+*.patch -text
+# machine-readable tables parsed with awk -- must never carry CR
+*.env text eol=lf

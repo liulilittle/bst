@@ -1,0 +1,234 @@
+#Requires -Version 5.1
+<#
+  bst -- Windows entry point: one command, correct builds.
+  Windows sites (windows-msvc-*) build natively with the Visual Studio MSVC
+  environment.  Linux and Android sites are delegated to WSL, running the very
+  same bash scripts a Linux host (and CI) runs.
+
+  Examples:
+    .\scripts\build.ps1 openssl -Site windows-msvc-x64
+    .\scripts\build.ps1 jemalloc -Site windows-msvc-x86 -Variant both
+    .\scripts\build.ps1 openssl -All            # all Windows sites + WSL sites
+    .\scripts\build.ps1 liburing -Site linux-aarch64
+#>
+param(
+    [Parameter(Position = 0)]
+    [ValidateSet("openssl", "jemalloc", "liburing")]
+    [string]$Lib,
+
+    [string]$Site = "",
+    [string]$Version = "",
+    [ValidateSet("static", "shared", "both")]
+    [string]$Variant = "static",
+    [switch]$Test,
+    [switch]$Clean,
+    [switch]$SkipSmoke,
+    [switch]$All,
+    [switch]$ListSites,
+    [string]$WslDistro = "Ubuntu-24.04",
+    [switch]$NoWsl
+)
+
+$ErrorActionPreference = "Stop"
+$Root = Split-Path -Parent $PSScriptRoot
+$MatrixFile = Join-Path $Root "ci\site-matrix.env"
+
+function Fail([string]$msg) { Write-Host "bst: error: $msg" -ForegroundColor Red; exit 1 }
+function Info([string]$msg) { Write-Host "bst: $msg" }
+
+function Get-Sites {
+    Get-Content $MatrixFile | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '\|' } | ForEach-Object {
+        $f = $_ -split '\|'
+        [pscustomobject]@{
+            Site   = $f[0]
+            Triple = $f[1]
+            Family = $f[2]
+            Libs   = "$($f[7])".Trim()
+        }
+    }
+}
+
+function Get-SiteInfo([string]$key) {
+    Get-Sites | Where-Object { $_.Site -eq $key } | Select-Object -First 1
+}
+
+function Find-Bash {
+    $candidates = @(
+        (Join-Path ${env:ProgramFiles} "Git\bin\bash.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"),
+        (Get-Command bash.exe -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    if ($candidates.Count -eq 0) {
+        Fail "Git Bash not found. Install Git for Windows (https://git-scm.com/download/win) and retry."
+    }
+    $candidates[0]
+}
+
+function Get-WslRepoPath {
+    $drive = $Root.Substring(0, 1).ToLower()
+    $rest = $Root.Substring(2) -replace '\\', '/'
+    "/mnt/$drive$rest"
+}
+
+function Require-Wsl {
+    if ($NoWsl) { Fail "this site needs Linux; -NoWsl was given, aborting. Remove -NoWsl or run inside WSL." }
+    $raw = (& wsl.exe -l -q 2>$null | Out-String)
+    $distros = $raw.Replace([string][char]0, '')
+    if ($LASTEXITCODE -ne 0 -or $distros -notmatch [regex]::Escape($WslDistro)) {
+        Fail "WSL distro '$WslDistro' not found. Install it: wsl --install -d $WslDistro  (or pass -WslDistro <name>)"
+    }
+}
+
+function Import-VsEnv([string]$arch) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        Fail "vswhere not found -- install Visual Studio 2022 with the 'Desktop development with C++' workload."
+    }
+    $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $vsPath) { Fail "Visual Studio with C++ tools not found (vswhere returned nothing)." }
+    $devCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
+    if (-not (Test-Path $devCmd)) { Fail "VsDevCmd.bat not found under $vsPath" }
+    Info "loading MSVC environment: VsDevCmd.bat -arch=$arch"
+    $envDump = cmd /c "call `"$devCmd`" -no_logo -arch=$arch >nul 2>&1 && set"
+    foreach ($line in $envDump) {
+        if ($line -match '^([^=]+)=(.*)$') {
+            Set-Item -Path ("env:" + $matches[1]) -Value $matches[2] -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+        Fail "cl.exe still not in PATH after loading the VS environment"
+    }
+}
+
+function Download-File([string]$url, [string]$dest) {
+    # curl.exe ships with Windows 10+; it streams to disk and honors redirects.
+    $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+    if (-not (Test-Path $curl)) { $curl = "curl.exe" }
+    Info "downloading $url"
+    & $curl -fL --retry 3 --retry-delay 2 -o "$dest" $url
+    if ($LASTEXITCODE -ne 0) { Fail "download failed (curl rc=$LASTEXITCODE): $url" }
+}
+
+function Get-ToolsDir { Join-Path (Join-Path $Root ".cache") "tools" }
+
+function Ensure-Nasm {
+    if (Get-Command nasm.exe -ErrorAction SilentlyContinue) { return }
+    $tools = Get-ToolsDir
+    New-Item -ItemType Directory -Force -Path $tools | Out-Null
+    $dir = Join-Path $tools "nasm"
+    $exe = Get-ChildItem -Path $dir -Recurse -Filter nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $exe) {
+        $zip = Join-Path $tools "nasm-2.16.03-win64.zip"
+        if (-not (Test-Path $zip)) {
+            Info "NASM not found -- provisioning a portable copy into .cache\tools (no admin needed)"
+            Download-File "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip" "$zip"
+        }
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        $exe = Get-ChildItem -Path $dir -Recurse -Filter nasm.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+    if (-not $exe) { Fail "NASM provisioning failed (no nasm.exe under $dir). Install manually: winget install NASM.NASM" }
+    $env:PATH = "$($exe.DirectoryName);$env:PATH"
+    Info "using NASM: $($exe.FullName)"
+}
+
+function Ensure-Perl {
+    if (Get-Command perl.exe -ErrorAction SilentlyContinue) { return }
+    $tools = Get-ToolsDir
+    New-Item -ItemType Directory -Force -Path $tools | Out-Null
+    $dir = Join-Path $tools "strawberry"
+    $exe = Get-ChildItem -Path $dir -Recurse -Filter perl.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\bin\\perl\.exe$' } | Select-Object -First 1
+    if (-not $exe) {
+        $zip = Join-Path $tools "strawberry-perl-5.42.3.1-64bit-portable.zip"
+        if (-not (Test-Path $zip)) {
+            Info "Perl not found -- provisioning Strawberry Perl (portable) into .cache\tools (no admin needed)"
+            Download-File "https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_54231_64bit/strawberry-perl-5.42.3.1-64bit-portable.zip" "$zip"
+        }
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        $exe = Get-ChildItem -Path $dir -Recurse -Filter perl.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\bin\\perl\.exe$' } | Select-Object -First 1
+    }
+    if (-not $exe) { Fail "Strawberry Perl provisioning failed (no perl.exe under $dir). Install manually: winget install StrawberryPerl.StrawberryPerl" }
+    $env:PATH = "$($exe.DirectoryName);$env:PATH"
+    Info "using Perl: $($exe.FullName)"
+}
+
+function Invoke-BuildOnWindows([string]$site) {
+    $arch = switch -Wildcard ($site) {
+        "windows-msvc-x64"   { "amd64"; break }
+        "windows-msvc-x86"   { "x86"; break }
+        "windows-msvc-arm64" { "amd64_arm64"; break }
+        default              { "amd64" }
+    }
+    Import-VsEnv $arch
+
+    if ($Lib -eq "openssl") { Ensure-Perl; Ensure-Nasm }
+
+    $bash = Find-Bash
+    $rootUnix = $Root -replace '\\', '/'
+    $argsList = @("scripts/build.sh", $Lib, "--site", $site, "--variant", $Variant)
+    if ($Version) { $argsList += @("--version", $Version) }
+    if ($Test) { $argsList += "--test" }
+    if ($Clean) { $argsList += "--clean" }
+    if ($SkipSmoke) { $argsList += "--skip-smoke" }
+    $cmd = "cd '$rootUnix' && bash " + ($argsList -join ' ')
+    Info "run: $cmd"
+    & $bash -lc $cmd
+}
+
+function Invoke-BuildOnWsl([string]$site) {
+    Require-Wsl
+    $wslRoot = Get-WslRepoPath
+    $argsList = @("scripts/build.sh", $Lib, "--site", $site, "--variant", $Variant)
+    if ($Version) { $argsList += @("--version", $Version) }
+    if ($Test) { $argsList += "--test" }
+    if ($Clean) { $argsList += "--clean" }
+    if ($SkipSmoke) { $argsList += "--skip-smoke" }
+    $cmd = "cd '$wslRoot' && bash " + ($argsList -join ' ')
+    Info "run (WSL $WslDistro): $cmd"
+    & wsl.exe -d $WslDistro -- bash -lc $cmd
+}
+
+# ---- main -----------------------------------------------------------------
+if (-not $Lib -and -not $ListSites) {
+    Write-Host "usage: build.ps1 <openssl|jemalloc|liburing> [-Site <site>] [-Version <v>] [-Variant static|shared|both] [-Test] [-Clean] [-SkipSmoke] [-All] [-ListSites] [-WslDistro <name>] [-NoWsl]"
+    exit 2
+}
+
+if ($ListSites) {
+    $bash = Find-Bash
+    $rootUnix = $Root -replace '\\', '/'
+    & $bash -lc "cd '$rootUnix' && bash scripts/build.sh $Lib --list-sites"
+    exit $LASTEXITCODE
+}
+
+if ($All) {
+    $fail = 0
+    $windowsSites = @(Get-Sites | Where-Object { $_.Family -eq "windows" -and ($_.Libs -split '\s+') -contains $Lib })
+    foreach ($s in $windowsSites) {
+        Invoke-BuildOnWindows $s.Site
+        if ($LASTEXITCODE -ne 0) { $fail++; Write-Host "bst: FAILED: $($s.Site)" -ForegroundColor Red }
+    }
+    if (-not $NoWsl) {
+        $otherSites = @(Get-Sites | Where-Object { $_.Family -ne "windows" -and ($_.Libs -split '\s+') -contains $Lib })
+        foreach ($s in $otherSites) {
+            Invoke-BuildOnWsl $s.Site
+            if ($LASTEXITCODE -ne 0) { $fail++; Write-Host "bst: FAILED: $($s.Site)" -ForegroundColor Red }
+        }
+    }
+    if ($fail -gt 0) { Fail "$fail site(s) failed" }
+    Info "all sites ok"
+    exit 0
+}
+
+if (-not $Site) { $Site = "windows-msvc-x64" }
+$info = Get-SiteInfo $Site
+if (-not $info) { Fail "unknown site '$Site' (see ci/site-matrix.env)" }
+if (-not (($info.Libs -split '\s+') -contains $Lib)) { Fail "site '$Site' does not support '$Lib' (supported: $($info.Libs))" }
+
+if ($info.Family -eq "windows") {
+    Invoke-BuildOnWindows $Site
+} else {
+    Invoke-BuildOnWsl $Site
+}
+exit $LASTEXITCODE

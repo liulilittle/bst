@@ -1,0 +1,206 @@
+name: ci
+
+# One job per (site, lib) shard; every job drives the same scripts a human
+# runs locally (scripts/ci/build-test.sh).  The YAML only installs
+# dependencies and selects matrix entries -- the site list, build recipes and
+# test policy live in ci/site-matrix.env and scripts/.  ci/check-workflows.sh
+# enforces that this file stays in sync with the site table.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- fast gates ------------------------------------------------------------
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: framework self-tests
+        run: bash scripts/tests/unit.sh
+      - name: workflow/site-table consistency
+        run: bash ci/check-workflows.sh
+
+  # --- linux native (gcc + clang), upstream test suites run for real ---------
+  linux-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { site: linux-x86_64,       lib: openssl }
+          - { site: linux-x86_64,       lib: jemalloc }
+          - { site: linux-x86_64,       lib: liburing }
+          - { site: linux-x86_64-clang, lib: openssl }
+          - { site: linux-x86_64-clang, lib: jemalloc }
+          - { site: linux-x86_64-clang, lib: liburing }
+    steps:
+      - uses: actions/checkout@v4
+      - name: liburing test deps (consistent libbpf + bpftool)
+        if: matrix.lib == 'liburing'
+        run: bash scripts/setup.sh --with-libbpf
+      - name: build + upstream tests
+        run: bash scripts/ci/build-test.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - name: stage dist tarball
+        run: bash scripts/ci/stage-dist.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.lib }}-${{ matrix.site }}
+          path: dist-out/*.tar.gz
+          if-no-files-found: error
+
+  # --- linux cross (qemu-user smoke), all supported libs per site ------------
+  linux-cross:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { site: linux-aarch64, apt: gcc-aarch64-linux-gnu }
+          - { site: linux-armv7,   apt: gcc-arm-linux-gnueabihf }
+          - { site: linux-riscv64, apt: gcc-riscv64-linux-gnu }
+          - { site: linux-ppc64le, apt: gcc-powerpc64le-linux-gnu }
+          - { site: linux-s390x,   apt: gcc-s390x-linux-gnu }
+          - { site: linux-i686,    apt: gcc-i686-linux-gnu }
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends qemu-user ${{ matrix.apt }}
+      - name: build + smoke for every supported lib
+        run: |
+          rc=0
+          for lib in $(awk -F'|' -v s="${{ matrix.site }}" '$1 == s { print $8 }' ci/site-matrix.env); do
+            bash scripts/ci/build-test.sh "$lib" "${{ matrix.site }}" || rc=1
+          done
+          exit $rc
+      - name: stage dist tarballs
+        run: |
+          for lib in $(awk -F'|' -v s="${{ matrix.site }}" '$1 == s { print $8 }' ci/site-matrix.env); do
+            bash scripts/ci/stage-dist.sh "$lib" "${{ matrix.site }}"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-cross-${{ matrix.site }}
+          path: dist-out/*.tar.gz
+          if-no-files-found: error
+
+  # --- windows msvc ----------------------------------------------------------
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { site: windows-msvc-x64,   lib: openssl }
+          - { site: windows-msvc-x64,   lib: jemalloc }
+          - { site: windows-msvc-x86,   lib: openssl }
+          - { site: windows-msvc-x86,   lib: jemalloc }
+          - { site: windows-msvc-arm64, lib: openssl }
+    steps:
+      - uses: actions/checkout@v4
+      - name: NASM (OpenSSL assembler)
+        if: matrix.lib == 'openssl'
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: build (loads Visual Studio via build.ps1)
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 ${{ matrix.lib }} -Site ${{ matrix.site }}
+      - name: stage dist tarball
+        shell: bash
+        run: bash scripts/ci/stage-dist.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.lib }}-${{ matrix.site }}
+          path: dist-out/*.tar.gz
+          if-no-files-found: error
+
+  # --- macos (arm64 runner builds both macos sites; -arch selects target) ----
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { site: macos-arm64, lib: openssl }
+          - { site: macos-arm64, lib: jemalloc }
+          - { site: macos-x64,   lib: openssl }
+          - { site: macos-x64,   lib: jemalloc }
+    steps:
+      - uses: actions/checkout@v4
+      - name: build + upstream tests
+        run: bash scripts/ci/build-test.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - name: stage dist tarball
+        run: bash scripts/ci/stage-dist.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.lib }}-${{ matrix.site }}
+          path: dist-out/*.tar.gz
+          if-no-files-found: error
+
+  # --- android (NDK; compile + link + smoke build, no device runner) ---------
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        site: [android-arm64-v8a, android-armeabi-v7a, android-x86_64, android-x86]
+        lib: [openssl, jemalloc]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ndk
+          key: ndk-r27c-linux
+      - name: fetch pinned NDK
+        run: bash scripts/setup-ndk.sh
+      - name: build + smoke
+        run: bash scripts/ci/build-test.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - name: stage dist tarball
+        run: bash scripts/ci/stage-dist.sh ${{ matrix.lib }} ${{ matrix.site }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.lib }}-${{ matrix.site }}
+          path: dist-out/*.tar.gz
+          if-no-files-found: error
+
+  # --- single status gate ----------------------------------------------------
+  ci-summary:
+    runs-on: ubuntu-24.04
+    needs: [unit, linux-native, linux-cross, windows, macos, android]
+    if: always()
+    steps:
+      - name: require every job to be green
+        run: |
+          fail=0
+          for r in \
+            "unit=${{ needs.unit.result }}" \
+            "linux-native=${{ needs.linux-native.result }}" \
+            "linux-cross=${{ needs.linux-cross.result }}" \
+            "windows=${{ needs.windows.result }}" \
+            "macos=${{ needs.macos.result }}" \
+            "android=${{ needs.android.result }}"; do
+            echo "$r"
+            case "$r" in *=success) ;; *) fail=1 ;; esac
+          done
+          [ "$fail" -eq 0 ] || { echo "ci-summary: a required job did not succeed"; exit 1; }
+          echo "ci-summary: all jobs green"
