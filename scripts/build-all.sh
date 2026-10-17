@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build every (lib, site) that this host can build, one at a time, through the
+# Build every (bst_lib, site) that this host can build, one at a time, through the
 # same scripts/ci/build-test.sh driver CI uses.
 #
-# usage: scripts/build-all.sh [--lib <lib>] [--sites "<s1> <s2> ..."] [--keep-going] [build.sh options...]
+# usage: scripts/build-all.sh [--bst_lib <bst_lib>] [--sites "<s1> <s2> ..."] [--keep-going] [build.sh options...]
 #
-#   --lib <lib>       restrict to one library
+#   --bst_lib <bst_lib>       restrict to one library
 #   --sites "<list>"  restrict to these site keys (default: every site this
 #                     host family can build)
 #   --keep-going      continue after a failure (default: stop at the first)
@@ -15,7 +15,7 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export BST_ROOT="$ROOT"
-. "$ROOT/scripts/lib/common.sh"
+. "$ROOT/scripts/bst_lib/common.sh"
 
 LIBS="openssl jemalloc liburing"
 ONLY_SITES=""
@@ -24,7 +24,7 @@ PASSTHROUGH=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --lib)        LIBS="${2:-}"; shift 2 ;;
+        --bst_lib)        LIBS="${2:-}"; shift 2 ;;
         --sites)      ONLY_SITES="${2:-}"; shift 2 ;;
         --keep-going) KEEP_GOING=1; shift ;;
         *)            PASSTHROUGH+=("$1"); shift ;;
@@ -37,30 +37,30 @@ HF="$(bst_host_family)"
 pass=0; fail=0; skip=0
 results=()
 
-for lib in $LIBS; do
+for bst_lib in $LIBS; do
     if [ -n "$ONLY_SITES" ]; then
         sites="$ONLY_SITES"
     else
-        sites="$(bst_sites_for_lib "$lib")"
+        sites="$(bst_sites_for_lib "$bst_lib")"
     fi
     for site in $sites; do
         site_info "$site"
         if ! bst_host_accepts_site "$SITE_FAMILY"; then
-            results+=("$lib/$site: SKIP (foreign host family)")
+            results+=("$bst_lib/$site: SKIP (foreign host family)")
             skip=$((skip + 1))
             continue
         fi
         if [ "$SITE_FAMILY" = android ]; then
             if [ -z "${ANDROID_NDK:-}" ] && [ ! -d "$BST_CACHE/ndk/android-ndk-r${BST_NDK_VERSION}" ]; then
-                results+=("$lib/$site: SKIP (no NDK -- run scripts/setup-ndk.sh)")
+                results+=("$bst_lib/$site: SKIP (no NDK -- run scripts/setup-ndk.sh)")
                 skip=$((skip + 1))
                 continue
             fi
         fi
-        if "$ROOT/scripts/ci/build-test.sh" "$lib" "$site" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; then
-            results+=("$lib/$site: PASS"); pass=$((pass + 1))
+        if "$ROOT/scripts/ci/build-test.sh" "$bst_lib" "$site" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}; then
+            results+=("$bst_lib/$site: PASS"); pass=$((pass + 1))
         else
-            results+=("$lib/$site: FAIL"); fail=$((fail + 1))
+            results+=("$bst_lib/$site: FAIL"); fail=$((fail + 1))
             if [ "$KEEP_GOING" -eq 0 ]; then
                 echo
                 for r in "${results[@]}"; do printf '  %-48s %s\n' "${r%%:*}" "${r#*: }"; done

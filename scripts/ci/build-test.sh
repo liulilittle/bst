@@ -17,7 +17,7 @@ export BST_ROOT="$ROOT"
 . "$ROOT/scripts/lib/common.sh"
 
 [ $# -ge 2 ] || bst_die "usage: scripts/ci/build-test.sh <lib> <site> [build.sh options...]"
-LIB="$1"; SITE="$2"; shift 2
+BST_LIB="$1"; SITE="$2"; shift 2
 
 site_info "$SITE"
 
@@ -31,5 +31,5 @@ case "$SITE_FAMILY" in
         ;;
 esac
 
-echo "== build-test: $LIB / $SITE =="
-exec "$ROOT/scripts/build.sh" "$LIB" --site "$SITE" "$@"
+echo "== build-test: $BST_LIB / $SITE =="
+exec "$ROOT/scripts/build.sh" "$BST_LIB" --site "$SITE" "$@"

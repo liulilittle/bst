@@ -105,10 +105,10 @@ jemalloc_install_windows() {
     cp -f "$out"/*.dll "$BST_DIST/bin/" 2>/dev/null || true
     cp -f "$out"/*.pdb "$BST_DIST/lib/" 2>/dev/null || true
     # normalize the library name so consumers always link "jemalloc.lib"
-    local lib
-    for lib in "$BST_DIST/lib"/jemalloc*.lib; do
-        [ -e "$lib" ] || continue
-        case "$lib" in *-static*|*jemalloc.lib) cp -f "$lib" "$BST_DIST/lib/jemalloc.lib" ;; esac
+    local bst_lib
+    for bst_lib in "$BST_DIST/lib"/jemalloc*.lib; do
+        [ -e "$bst_lib" ] || continue
+        case "$bst_lib" in *-static*|*jemalloc.lib) cp -f "$bst_lib" "$BST_DIST/lib/jemalloc.lib" ;; esac
     done
     cp -r "$BST_SRC/include/jemalloc" "$BST_DIST/include/"
     [ -d "$BST_SRC/include/msvc_compat" ] && cp -r "$BST_SRC/include/msvc_compat" "$BST_DIST/include/"

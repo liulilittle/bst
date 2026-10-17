@@ -216,6 +216,10 @@ resolve_toolchain() { # exports CC CXX AR RANLIB STRIP NM OBJCOPY + SITE_SYSROOT
             local cl_dir
             cl_dir="$(dirname "$(command -v cl)")"
             PATH="$cl_dir:$PATH"
+            # diagnostics hook: inject an extra front-of-PATH dir on demand
+            if [ -n "${BST_WIN_DIAG_PATH:-}" ]; then
+                PATH="$BST_WIN_DIAG_PATH:$PATH"
+            fi
             export PATH
             ;;
         *) bst_die "unsupported site family '$SITE_FAMILY'" ;;
@@ -275,9 +279,9 @@ bst_default_version() { # <lib>
 }
 
 bst_fetch() { # <lib> <version>: download+verify+extract+patch; sets BST_SRC
-    local lib="$1" ver="$2" row url sha fname
-    row="$(bst_version_row "$lib" "$ver")"
-    [ -n "$row" ] || bst_die "no pinned source for '$lib $ver' -- add one with: scripts/pin.sh $lib $ver"
+    local bst_lib="$1" ver="$2" row url sha fname
+    row="$(bst_version_row "$bst_lib" "$ver")"
+    [ -n "$row" ] || bst_die "no pinned source for '$bst_lib $ver' -- add one with: scripts/pin.sh $bst_lib $ver"
     url="${row%%|*}"; sha="${row#*|}"
     fname="${url##*/}"
     mkdir -p "$BST_CACHE/src"
@@ -297,7 +301,7 @@ bst_fetch() { # <lib> <version>: download+verify+extract+patch; sets BST_SRC
   (delete $BST_TARBALL and retry; if upstream re-released the file, re-pin with scripts/pin.sh)"
     bst_info "sha256 ok: $fname"
 
-    BST_SRC="$BST_BUILD/src/$lib-$ver"
+    BST_SRC="$BST_BUILD/src/$bst_lib-$ver"
     if [ ! -f "$BST_SRC/.bst-extracted" ]; then
         rm -rf "$BST_SRC"
         mkdir -p "$BST_SRC"
@@ -305,12 +309,12 @@ bst_fetch() { # <lib> <version>: download+verify+extract+patch; sets BST_SRC
         tar -xf "$BST_TARBALL" -C "$BST_SRC" --strip-components=1 || bst_die "extract failed: $BST_TARBALL"
         touch "$BST_SRC/.bst-extracted"
     fi
-    bst_apply_patches "$lib" "$ver" "$BST_SRC"
+    bst_apply_patches "$bst_lib" "$ver" "$BST_SRC"
 }
 
 bst_apply_patches() { # <lib> <version> <srcdir>
-    local lib="$1" ver="$2" src="$3" d f sig files=()
-    for d in "$BST_ROOT/patches/$lib/$ver" "$BST_ROOT/patches/$lib"; do
+    local bst_lib="$1" ver="$2" src="$3" d f sig files=()
+    for d in "$BST_ROOT/patches/$bst_lib/$ver" "$BST_ROOT/patches/$bst_lib"; do
         [ -d "$d" ] || continue
         for f in "$d"/*.patch; do
             [ -e "$f" ] || continue

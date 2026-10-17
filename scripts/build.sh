@@ -28,7 +28,7 @@ usage() {
     sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-LIB=""; SITE=""; VERSION=""; VARIANT="static"
+BST_LIB=""; SITE=""; VERSION=""; VARIANT="static"
 RUN_TEST=0; CLEAN=0; JOBS=""; SKIP_SMOKE=0; LIST_SITES=0
 
 while [ $# -gt 0 ]; do
@@ -45,21 +45,21 @@ while [ $# -gt 0 ]; do
         --)           shift; break ;;
         -*)           bst_die "unknown option '$1' (see --help)" ;;
         *)
-            if [ -z "$LIB" ]; then LIB="$1"; else bst_die "unexpected argument '$1'"; fi
+            if [ -z "$BST_LIB" ]; then BST_LIB="$1"; else bst_die "unexpected argument '$1'"; fi
             shift
             ;;
     esac
 done
 
-[ -n "$LIB" ] || { usage >&2; exit 2; }
-case "$LIB" in
+[ -n "$BST_LIB" ] || { usage >&2; exit 2; }
+case "$BST_LIB" in
     openssl|jemalloc|liburing) ;;
-    *) bst_die "unknown library '$LIB' (known: openssl jemalloc liburing)" ;;
+    *) bst_die "unknown library '$BST_LIB' (known: openssl jemalloc liburing)" ;;
 esac
-[ -f "$ROOT/scripts/lib/recipes/$LIB.sh" ] || bst_die "recipe missing: scripts/lib/recipes/$LIB.sh"
+[ -f "$ROOT/scripts/lib/recipes/$BST_LIB.sh" ] || bst_die "recipe missing: scripts/lib/recipes/$BST_LIB.sh"
 
 if [ "$LIST_SITES" -eq 1 ]; then
-    bst_sites_for_lib "$LIB"
+    bst_sites_for_lib "$BST_LIB"
     exit 0
 fi
 
@@ -67,7 +67,7 @@ fi
 [ -n "$SITE" ] || bst_die "cannot auto-detect a site for this host; pass --site (see ci/site-matrix.env)"
 
 site_info "$SITE"
-site_supports_lib "$LIB" || bst_die "site '$SITE' does not support '$LIB' (supported here: $SITE_LIBS)"
+site_supports_lib "$BST_LIB" || bst_die "site '$SITE' does not support '$BST_LIB' (supported here: $SITE_LIBS)"
 if ! bst_host_accepts_site "$SITE_FAMILY"; then
     bst_die "host family '$(bst_host_family)' cannot build site '$SITE'
   policy: Windows host -> Windows sites; Linux/WSL host -> Linux + Android; macOS host -> macOS
@@ -79,33 +79,33 @@ case "$VARIANT" in
     *) bst_die "--variant must be one of: static shared both" ;;
 esac
 
-[ -n "$VERSION" ] || VERSION="$(bst_default_version "$LIB")"
-[ -n "$VERSION" ] || bst_die "no default version for '$LIB'; pass --version <v>"
+[ -n "$VERSION" ] || VERSION="$(bst_default_version "$BST_LIB")"
+[ -n "$VERSION" ] || bst_die "no default version for '$BST_LIB'; pass --version <v>"
 
 JOBS="${JOBS:-$(bst_nproc)}"
 export BST_JOBS="$JOBS" BST_TEST="$RUN_TEST" BST_SKIP_SMOKE="$SKIP_SMOKE"
 
 mkdir -p "$ROOT/ci-logs"
-LOG="$ROOT/ci-logs/${LIB}-${SITE}.log"
+LOG="$ROOT/ci-logs/${BST_LIB}-${SITE}.log"
 exec > >(tee "$LOG") 2>&1
 
-bst_info "bst $BST_VERSION -- $LIB $VERSION -- site $SITE ($SITE_TRIPLE) -- variant $VARIANT -- jobs $JOBS"
+bst_info "bst $BST_VERSION -- $BST_LIB $VERSION -- site $SITE ($SITE_TRIPLE) -- variant $VARIANT -- jobs $JOBS"
 bst_info "build dir: $BST_BUILD"
 bst_info "cache dir: $BST_CACHE"
 
 if [ "$CLEAN" -eq 1 ]; then
-    bst_info "clean: removing .build/$LIB and dist/$LIB/$SITE_TRIPLE"
-    rm -rf "$BST_BUILD/$LIB" "$(bst_stage_dir "$LIB" "$SITE_TRIPLE")"
+    bst_info "clean: removing .build/$BST_LIB and dist/$BST_LIB/$SITE_TRIPLE"
+    rm -rf "$BST_BUILD/$BST_LIB" "$(bst_stage_dir "$BST_LIB" "$SITE_TRIPLE")"
 fi
 
 resolve_toolchain
 resolve_emulator
 
 # shellcheck source=/dev/null
-. "$ROOT/scripts/lib/recipes/$LIB.sh"
+. "$ROOT/scripts/lib/recipes/$BST_LIB.sh"
 
-bst_fetch "$LIB" "$VERSION"
-bst_prepare_stage "$LIB" "$SITE_TRIPLE"
+bst_fetch "$BST_LIB" "$VERSION"
+bst_prepare_stage "$BST_LIB" "$SITE_TRIPLE"
 
 case "$VARIANT" in
     both) VARIANTS="static shared" ;;
@@ -114,31 +114,31 @@ esac
 
 for v in $VARIANTS; do
     export BST_VARIANT="$v"
-    BST_BUILD_DIR="$BST_BUILD/$LIB/$SITE-$v"
+    BST_BUILD_DIR="$BST_BUILD/$BST_LIB/$SITE-$v"
     export BST_BUILD_DIR
     [ "$CLEAN" -eq 1 ] && rm -rf "$BST_BUILD_DIR"
     mkdir -p "$BST_BUILD_DIR"
 
-    bst_info "== [$LIB $SITE $v] configure =="
+    bst_info "== [$BST_LIB $SITE $v] configure =="
     recipe_configure
-    bst_info "== [$LIB $SITE $v] build =="
+    bst_info "== [$BST_LIB $SITE $v] build =="
     recipe_build
-    bst_info "== [$LIB $SITE $v] install =="
+    bst_info "== [$BST_LIB $SITE $v] install =="
     recipe_install
 done
 
 if [ "$RUN_TEST" -eq 1 ] && command -v recipe_test >/dev/null 2>&1; then
-    bst_info "== [$LIB $SITE] upstream test suite =="
+    bst_info "== [$BST_LIB $SITE] upstream test suite =="
     recipe_test
 fi
 
 if [ "$SKIP_SMOKE" -eq 0 ] && command -v recipe_smoke >/dev/null 2>&1; then
-    bst_info "== [$LIB $SITE] smoke test =="
+    bst_info "== [$BST_LIB $SITE] smoke test =="
     recipe_smoke
 fi
 
-bst_write_build_info "$LIB" "$VERSION" "$VARIANTS" "--site $SITE --variant $VARIANT"
+bst_write_build_info "$BST_LIB" "$VERSION" "$VARIANTS" "--site $SITE --variant $VARIANT"
 
 bst_info "artifacts:"
 bst_list_dist | sed 's/^/  /'
-bst_info "done: $LIB $VERSION -> dist/$LIB/$SITE_TRIPLE  (log: ci-logs/${LIB}-${SITE}.log)"
+bst_info "done: $BST_LIB $VERSION -> dist/$BST_LIB/$SITE_TRIPLE  (log: ci-logs/${BST_LIB}-${SITE}.log)"
