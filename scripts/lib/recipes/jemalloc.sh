@@ -64,11 +64,10 @@ jemalloc_msvc_config() { # -> Release-static | Release
 }
 
 jemalloc_msvc_platform() {
-    # solution-level platform spellings (32-bit is "x86" in the sln even
-    # though the project files call it "Win32")
+    # project-level platform spelling as declared in the vcxproj
     case "$SITE" in
         windows-msvc-x64) echo "x64" ;;
-        windows-msvc-x86) echo "x86" ;;
+        windows-msvc-x86) echo "Win32" ;;
         *) bst_die "no MSVC project platform for '$SITE' (jemalloc ships x64/x86 only)" ;;
     esac
 }
@@ -76,15 +75,24 @@ jemalloc_msvc_platform() {
 recipe_build() {
     case "$SITE_FAMILY" in
         windows)
-            local cfg plat mb mb_exe
+            local cfg plat mb mb_exe proj sol_dir
             cfg="$(jemalloc_msvc_config)"
             plat="$(jemalloc_msvc_platform)"
             mb="${BST_MSBUILD:-msbuild}"
             mb_exe="$(command -v cygpath >/dev/null 2>&1 && cygpath -u "$mb" 2>/dev/null || echo "$mb")"
             [ -x "$mb_exe" ] || command -v "$mb" >/dev/null 2>&1 || \
                 bst_die "missing MSBuild -- run through scripts/build.ps1 (loads the Visual Studio environment)"
-            ( cd "$BST_SRC/msvc" && bst_msvc_run "$mb_exe" jemalloc_vc2022.sln /nologo /m:"$BST_JOBS" \
-                /p:Configuration="$cfg" /p:Platform="$plat" ) || bst_die "jemalloc msbuild failed"
+            # Build the vcxproj directly: the solution's 32-bit platform is
+            # spelled "x86" while the project configs say "Win32", and a
+            # global /p:Platform from the .sln does not map between the two
+            # (the project then compiles without any of its config).  Going
+            # straight to the project with its own spelling is deterministic;
+            # SolutionDir is passed explicitly because OutDir references it.
+            proj="$BST_SRC/msvc/projects/vc2022/jemalloc/jemalloc.vcxproj"
+            sol_dir="$(bst_win_path "$BST_SRC/msvc")\\"
+            ( cd "$BST_SRC/msvc" && bst_msvc_run "$mb_exe" "$(bst_win_path "$proj")" /nologo /m:"$BST_JOBS" \
+                /p:Configuration="$cfg" /p:Platform="$plat" /p:SolutionDir="$sol_dir" ) \
+                || bst_die "jemalloc msbuild failed"
             ;;
         *)
             ( cd "$BST_BUILD_DIR" && make -j"$BST_JOBS" ) || bst_die "jemalloc build failed"
